@@ -576,6 +576,42 @@ struct ieee80211_haiku_join_req {
 	uint8 i_key[];
 };
 #endif
+#ifndef IEEE80211_IOC_HAIKU_SAE_PASSWORD
+#define IEEE80211_IOC_HAIKU_SAE_PASSWORD		0x6004
+#define IEEE80211_HAIKU_SAE_PASSWORD_MAXLEN		128
+struct ieee80211_haiku_sae_password {
+	uint8 i_ssid[IEEE80211_NWID_LEN];
+	uint8 i_ssid_len;
+	uint8 i_password_len;
+	uint8 i_password[IEEE80211_HAIKU_SAE_PASSWORD_MAXLEN];
+};
+#endif
+		if (authMode >= B_NETWORK_AUTHENTICATION_WPA && password != NULL) {
+			// WPA3 (SAE) needs the password itself: give it to the
+			// kernel before joining. Older kernels refuse the request, and
+			// then join with the PSK alone.
+			struct ieee80211_haiku_sae_password sae;
+			memset(&sae, 0, sizeof(sae));
+			size_t nameLength = strlen(networkName);
+			size_t passwordLength = strlen(password);
+			if (nameLength <= IEEE80211_NWID_LEN
+				&& passwordLength <= sizeof(sae.i_password)) {
+				memcpy(sae.i_ssid, networkName, nameLength);
+				sae.i_ssid_len = nameLength;
+				memcpy(sae.i_password, password, passwordLength);
+				sae.i_password_len = passwordLength;
+
+				BNetworkDevice device(interfaceName);
+				struct ieee80211req request;
+				memset(&request, 0, sizeof(request));
+				request.i_type = IEEE80211_IOC_HAIKU_SAE_PASSWORD;
+				request.i_data = &sae;
+				request.i_len = sizeof(sae);
+				device.Control(SIOCS80211, &request);
+			}
+			forced_memzero(&sae, sizeof(sae));
+		}
+
 		const size_t joinReqLen = sizeof(struct ieee80211_haiku_join_req) + PMK_LEN;
 		struct ieee80211_haiku_join_req* joinReq =
 			(struct ieee80211_haiku_join_req*)alloca(joinReqLen);
